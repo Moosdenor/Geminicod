@@ -64,7 +64,7 @@ with tab1:
         st.warning("Geen aandelen gevonden voor deze filters.")
 
 # ==========================================
-# TAB 2: Insider Trading (Via OpenInsider)
+# TAB 2: Insider Trading (Via OpenInsider met foutmelding-detective)
 # ==========================================
 with tab2:
     st.header("Wat doen de directeuren? (Insider Trading)")
@@ -73,27 +73,31 @@ with tab2:
     @st.cache_data
     def haal_insider_data_op():
         try:
-            # We stappen over naar OpenInsider, die blokkeren de app niet!
             url = "http://openinsider.com/"
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
             }
             reactie = requests.get(url, headers=headers)
             
-            # We zoeken naar de tabellen op de pagina
+            # Controleer of we worden binnengelaten door de website
+            if reactie.status_code != 200:
+                st.error(f"De website weigert toegang. Foutcode: {reactie.status_code}")
+                return pd.DataFrame()
+                
             tabellen = pd.read_html(reactie.text)
             
-            # We zoeken de tabel waar het woord 'Ticker' in de titel staat
             for tabel in tabellen:
                 if 'Ticker' in tabel.columns:
-                    # We pakken alleen de kolommen die we echt interessant vinden
                     mooie_tabel = tabel[['Trade Date', 'Ticker', 'Company Name', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Qty', 'Value']]
-                    # We maken er meteen mooie Nederlandse namen van!
                     mooie_tabel.columns = ['Datum', 'Ticker', 'Bedrijf', 'Naam Directeur', 'Functie', 'Type Transactie', 'Prijs', 'Aantal', 'Waarde']
                     return mooie_tabel
                     
+            st.error("Kon de juiste tabel niet vinden op de pagina.")
             return pd.DataFrame()
+            
         except Exception as e:
+            # DIT IS DE DETECTIVE: We laten de exacte foutmelding zien op het scherm!
+            st.error(f"Er ging iets mis in de code: {e}")
             return pd.DataFrame()
             
     with st.spinner("Bezig met ophalen van de nieuwste transacties..."):
@@ -101,14 +105,6 @@ with tab2:
         
     if not df_insider.empty:
         st.success("De nieuwste transacties zijn succesvol binnengehaald!")
-        # Laat de tabel zien
         st.dataframe(df_insider, height=600)
-        
-        st.download_button(
-            label="Download Data als CSV",
-            data=df_insider.to_csv(index=False).encode('utf-8'),
-            file_name="insider_trading.csv",
-            mime="text/csv"
-        )
     else:
-        st.error("Het is helaas niet gelukt de gegevens op te halen.")
+        st.warning("Geen data om te laten zien.")
