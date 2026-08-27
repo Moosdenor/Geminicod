@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
-import io  # <-- DIT IS HET NIEUWE HULPMIDDEL
+import io
 from finvizfinance.screener.overview import Overview
 
 # Zorgt ervoor dat de app over de hele breedte van je scherm staat
@@ -84,12 +84,18 @@ with tab2:
                 st.error(f"De website weigert toegang. Foutcode: {reactie.status_code}")
                 return pd.DataFrame()
                 
-            # DE OPLOSSING: We gebruiken io.StringIO() zodat de app snapt dat dit tekst is en geen bestand
             tabellen = pd.read_html(io.StringIO(reactie.text))
             
+            # Dit is de lijst met kolommen die we écht moeten hebben
+            gezochte_kolommen = ['Trade Date', 'Ticker', 'Company Name', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Qty', 'Value']
+            
             for tabel in tabellen:
-                if 'Ticker' in tabel.columns:
-                    mooie_tabel = tabel[['Trade Date', 'Ticker', 'Company Name', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Qty', 'Value']]
+                # OPLOSSING: We wassen eerst alle onzichtbare websidespaties weg uit de titels
+                tabel.columns = [str(kolom).replace('\xa0', ' ').strip() for kolom in tabel.columns]
+                
+                # OPLOSSING: Check of ALLE gezochte kolommen erin zitten (zo negeren we de verkeerde tabellen)
+                if all(kolom in tabel.columns for kolom in gezochte_kolommen):
+                    mooie_tabel = tabel[gezochte_kolommen]
                     mooie_tabel.columns = ['Datum', 'Ticker', 'Bedrijf', 'Naam Directeur', 'Functie', 'Type Transactie', 'Prijs', 'Aantal', 'Waarde']
                     return mooie_tabel
                     
