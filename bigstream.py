@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import io  # <-- DIT IS HET NIEUWE HULPMIDDEL
 from finvizfinance.screener.overview import Overview
 
 # Zorgt ervoor dat de app over de hele breedte van je scherm staat
@@ -64,7 +65,7 @@ with tab1:
         st.warning("Geen aandelen gevonden voor deze filters.")
 
 # ==========================================
-# TAB 2: Insider Trading (Via OpenInsider met foutmelding-detective)
+# TAB 2: Insider Trading (Via OpenInsider - Definitieve Fix)
 # ==========================================
 with tab2:
     st.header("Wat doen de directeuren? (Insider Trading)")
@@ -79,12 +80,12 @@ with tab2:
             }
             reactie = requests.get(url, headers=headers)
             
-            # Controleer of we worden binnengelaten door de website
             if reactie.status_code != 200:
                 st.error(f"De website weigert toegang. Foutcode: {reactie.status_code}")
                 return pd.DataFrame()
                 
-            tabellen = pd.read_html(reactie.text)
+            # DE OPLOSSING: We gebruiken io.StringIO() zodat de app snapt dat dit tekst is en geen bestand
+            tabellen = pd.read_html(io.StringIO(reactie.text))
             
             for tabel in tabellen:
                 if 'Ticker' in tabel.columns:
@@ -96,7 +97,6 @@ with tab2:
             return pd.DataFrame()
             
         except Exception as e:
-            # DIT IS DE DETECTIVE: We laten de exacte foutmelding zien op het scherm!
             st.error(f"Er ging iets mis in de code: {e}")
             return pd.DataFrame()
             
