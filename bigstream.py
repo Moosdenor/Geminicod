@@ -65,7 +65,7 @@ with tab1:
         st.warning("Geen aandelen gevonden voor deze filters.")
 
 # ==========================================
-# TAB 2: Insider Trading (Via OpenInsider - Definitieve Fix)
+# TAB 2: Insider Trading (Via OpenInsider)
 # ==========================================
 with tab2:
     st.header("Wat doen de directeuren? (Insider Trading)")
@@ -86,21 +86,26 @@ with tab2:
                 
             tabellen = pd.read_html(io.StringIO(reactie.text))
             
-            # Dit is de lijst met kolommen die we écht moeten hebben
             gezochte_kolommen = ['Trade Date', 'Ticker', 'Company Name', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Qty', 'Value']
             
+            # OPLOSSING: We maken een leeg mandje waar we de allergrootste tabel in gaan stoppen
+            grootste_tabel = pd.DataFrame()
+            
             for tabel in tabellen:
-                # OPLOSSING: We wassen eerst alle onzichtbare websidespaties weg uit de titels
                 tabel.columns = [str(kolom).replace('\xa0', ' ').strip() for kolom in tabel.columns]
                 
-                # OPLOSSING: Check of ALLE gezochte kolommen erin zitten (zo negeren we de verkeerde tabellen)
                 if all(kolom in tabel.columns for kolom in gezochte_kolommen):
-                    mooie_tabel = tabel[gezochte_kolommen]
-                    mooie_tabel.columns = ['Datum', 'Ticker', 'Bedrijf', 'Naam Directeur', 'Functie', 'Type Transactie', 'Prijs', 'Aantal', 'Waarde']
-                    return mooie_tabel
-                    
-            st.error("Kon de juiste tabel niet vinden op de pagina.")
-            return pd.DataFrame()
+                    # Als deze tabel meer rijen heeft dan degene in ons mandje, wisselen we ze om!
+                    if len(tabel) > len(grootste_tabel):
+                        grootste_tabel = tabel[gezochte_kolommen]
+            
+            # Als we een tabel hebben gevonden, geven we die mooie Nederlandse namen
+            if not grootste_tabel.empty:
+                grootste_tabel.columns = ['Datum', 'Ticker', 'Bedrijf', 'Naam Directeur', 'Functie', 'Type Transactie', 'Prijs', 'Aantal', 'Waarde']
+                return grootste_tabel
+            else:
+                st.error("Kon de juiste tabel niet vinden op de pagina.")
+                return pd.DataFrame()
             
         except Exception as e:
             st.error(f"Er ging iets mis in de code: {e}")
@@ -110,7 +115,7 @@ with tab2:
         df_insider = haal_insider_data_op()
         
     if not df_insider.empty:
-        st.success("De nieuwste transacties zijn succesvol binnengehaald!")
+        st.success(f"Er zijn {len(df_insider)} transacties succesvol binnengehaald!")
         st.dataframe(df_insider, height=600)
     else:
         st.warning("Geen data om te laten zien.")
