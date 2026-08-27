@@ -64,34 +64,33 @@ with tab1:
         st.warning("Geen aandelen gevonden voor deze filters.")
 
 # ==========================================
-# TAB 2: De nieuwe en slimmere Insider Trading check
+# TAB 2: Insider Trading (Via OpenInsider)
 # ==========================================
 with tab2:
     st.header("Wat doen de directeuren? (Insider Trading)")
-    st.write("Hier zie je direct of directeuren of grote eigenaren hun eigen aandelen kopen of verkopen.")
+    st.write("Hier zie je de nieuwste transacties, direct uit de officiële database.")
     
-    # We slaan de data tijdelijk op (cache) zodat de app lekker snel blijft als je wisselt van tab
     @st.cache_data
     def haal_insider_data_op():
         try:
-            # Hier is het trucje: we doen alsof we een normale Mac-browser zijn
-            url = "https://finviz.com/insidertrading.ashx"
+            # We stappen over naar OpenInsider, die blokkeren de app niet!
+            url = "http://openinsider.com/"
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
             }
-            
-            # We halen de website op met ons 'masker' op
             reactie = requests.get(url, headers=headers)
             
-            # We laten de code automatisch naar tabellen op de website zoeken
+            # We zoeken naar de tabellen op de pagina
             tabellen = pd.read_html(reactie.text)
             
-            # De tabel met directeuren heeft altijd 10 kolommen op Finviz, dus die pakken we eruit
+            # We zoeken de tabel waar het woord 'Ticker' in de titel staat
             for tabel in tabellen:
-                if len(tabel.columns) == 10:
-                    # We maken de kolomnamen meteen netjes en makkelijk leesbaar
-                    tabel.columns = ['Ticker', 'Eigenaar', 'Functie', 'Datum', 'Transactie', 'Prijs', 'Aantal', 'Waarde ($)', 'Totaal Aandelen', 'SEC Link']
-                    return tabel
+                if 'Ticker' in tabel.columns:
+                    # We pakken alleen de kolommen die we echt interessant vinden
+                    mooie_tabel = tabel[['Trade Date', 'Ticker', 'Company Name', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Qty', 'Value']]
+                    # We maken er meteen mooie Nederlandse namen van!
+                    mooie_tabel.columns = ['Datum', 'Ticker', 'Bedrijf', 'Naam Directeur', 'Functie', 'Type Transactie', 'Prijs', 'Aantal', 'Waarde']
+                    return mooie_tabel
                     
             return pd.DataFrame()
         except Exception as e:
@@ -105,7 +104,6 @@ with tab2:
         # Laat de tabel zien
         st.dataframe(df_insider, height=600)
         
-        # Download knop
         st.download_button(
             label="Download Data als CSV",
             data=df_insider.to_csv(index=False).encode('utf-8'),
@@ -113,4 +111,4 @@ with tab2:
             mime="text/csv"
         )
     else:
-        st.error("Het is helaas niet gelukt de gegevens op te halen. De website blokkeert ons momenteel.")
+        st.error("Het is helaas niet gelukt de gegevens op te halen.")
