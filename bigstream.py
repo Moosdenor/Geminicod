@@ -2,15 +2,16 @@ import streamlit as st
 import pandas as pd
 import requests
 import io
-import yfinance as yf  # NIEUW: Dit pakketje haalt het nieuws en de cijfers op
 from finvizfinance.screener.overview import Overview
+from finvizfinance.news import News
+from finvizfinance.quote import finvizfinance
 
 # Zorgt ervoor dat de app over de hele breedte van je scherm staat
-st.set_page_config(page_title="Beurs Dashboard", layout="wide")
+st.set_page_config(page_title="Finviz Screener, Insiders & Nieuws", layout="wide")
 
-st.title("Beurs Dashboard: Screener, Insiders & Nieuws")
+st.title("Finviz Stock Screener, Insider Trading & Nieuws")
 
-# We maken nu DRIE tabbladen aan voor een overzichtelijk dashboard
+# Maak drie tabbladen aan voor een overzichtelijk dashboard
 tab1, tab2, tab3 = st.tabs(["Algemene Screener", "Recente Insider Trading", "Nieuws & Cijfers"])
 
 # ==========================================
@@ -53,7 +54,7 @@ with tab1:
     if not df_screener.empty:
         st.success(f"{len(df_screener)} aandelen gevonden voor {exchange} - {sector}")
 
-        # Laat de tabel zien met een mooi blauw kleurverloop voor de prijs
+        # Laat de tabel zien met een blauw kleurverloop voor de prijs
         st.dataframe(
             df_screener.style.background_gradient(cmap='Blues', subset=['Price'])
             .format({'Price': '${:.2f}', 'Dividend %': '{:.2f}%'}, na_rep="N/A"),
@@ -75,7 +76,7 @@ with tab2:
     @st.cache_data
     def haal_insider_data_op():
         try:
-            # De uitgebreide link die direct de 100 nieuwste rijen ophaalt
+            # Haalt direct de 100 nieuwste transacties op
             url = "http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=730&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&vl=&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=100&page=1"
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
@@ -90,18 +91,15 @@ with tab2:
 
             gezochte_kolommen = ['Trade Date', 'Ticker', 'Company Name', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Qty', 'Value']
 
-            # We maken een leeg mandje waar we de allergrootste tabel in gaan stoppen
             grootste_tabel = pd.DataFrame()
 
             for tabel in tabellen:
                 tabel.columns = [str(kolom).replace('\xa0', ' ').strip() for kolom in tabel.columns]
 
                 if all(kolom in tabel.columns for kolom in gezochte_kolommen):
-                    # Als deze tabel meer rijen heeft dan degene in ons mandje, wisselen we ze om!
                     if len(tabel) > len(grootste_tabel):
                         grootste_tabel = tabel[gezochte_kolommen]
 
-            # Als we een tabel hebben gevonden, geven we die mooie Nederlandse namen
             if not grootste_tabel.empty:
                 grootste_tabel.columns = ['Datum', 'Ticker', 'Bedrijf', 'Naam Directeur', 'Functie', 'Type Transactie', 'Prijs', 'Aantal', 'Waarde']
                 return grootste_tabel
@@ -123,63 +121,67 @@ with tab2:
         st.warning("Geen data om te laten zien.")
 
 # ==========================================
-# TAB 3: Nieuws & Cijfers (Nieuw!)
+# TAB 3: Nieuws & Cijfers (Via Finviz)
 # ==========================================
 with tab3:
     st.header("Het laatste nieuws en bedrijfsinfo")
     st.write("Laat de zoekbalk leeg voor algemeen beursnieuws, of typ een afkorting (zoals SOFI) voor specifiek nieuws en cijfers.")
 
-    # Het invulveld. Standaard is het helemaal leeg.
-    ingevulde_ticker = st.text_input("Typ een beursafkorting:", "")
-
-    # Als het veld leeg is, gebruiken we de afkorting 'SPY' op de achtergrond.
-    # SPY volgt de 500 grootste bedrijven, dus dat geeft perfect algemeen marktnieuws.
-    zoek_ticker = ingevulde_ticker if ingevulde_ticker != "" else "SPY"
-    
-    # We passen de titel aan afhankelijk van wat je hebt ingetypt
-    titel_tekst = ingevulde_ticker.upper() if ingevulde_ticker != "" else "de Algemene Beurs"
+    # Het invulveld
+    ingevulde_ticker = st.text_input("Typ een beursafkorting:", "").strip().upper()
+    titel_tekst = ingevulde_ticker if ingevulde_ticker != "" else "de Algemene Beurs"
 
     st.subheader(f"Laatste nieuws over {titel_tekst}")
     
     with st.spinner("Nieuws ophalen..."):
         try:
-            aandeel = yf.Ticker(zoek_ticker)
-            nieuws_berichten = aandeel.news
-            
-            if nieuws_berichten:
-                for artikel in nieuws_berichten[:5]: # We laten de 5 nieuwste artikelen zien
-                    # Maakt een klikbare link aan van de titel
-                    st.markdown(f"**[{artikel['title']}]({artikel['link']})**")
-                    st.write("---") # Een mooi streepje tussen de artikelen
+            if ingevulde_ticker == "":
+                # Algemeen marktnieuws ophalen
+                fnews = News()
+                nieuws_data = fnews.get_news()
+                nieuws_df = nieuws_data['news']
+            else:
+                # Nieuws specifiek voor het gekozen aandeel
+                stock = finvizfinance(ingevulde_ticker)
+                nieuws_df = stock.ticker_news()
+
+            # We laten de 5 nieuwste artikelen zien
+            if not nieuws_df.empty:
+                for index, row in nieuws_df.head(5).iterrows():
+                    titel = row.get('Title', row.get('title', 'Geen titel'))
+                    link = row.get('Link', row.get('link', '#'))
+                    st.markdown(f"**[{titel}]({link})**")
+                    st.write("---")
             else:
                 st.write("Er is op dit moment geen nieuws gevonden.")
+                
         except Exception as e:
-            st.error("Het ophalen van het nieuws is even niet gelukt.")
+            st.error(f"Het ophalen van het nieuws is niet gelukt. Foutmelding: {e}")
 
-    # We laten de financiële cijfers ALLEEN zien als je echt zelf een bedrijf hebt ingetypt.
-    # Bij algemeen nieuws heeft dit namelijk niet zoveel nut.
+    # Cijfers tonen we alleen als je daadwerkelijk een bedrijf hebt ingetypt
     if ingevulde_ticker != "":
-        st.subheader(f"Hoe gezond is {ingevulde_ticker.upper()}?")
+        st.subheader(f"Hoe staat {ingevulde_ticker} ervoor?")
         
         with st.spinner("Cijfers ophalen..."):
             try:
-                info = aandeel.info
+                stock = finvizfinance(ingevulde_ticker)
+                info = stock.ticker_fundament()
                 
-                # We maken drie kolommen naast elkaar voor een mooi overzicht
                 col_a, col_b, col_c = st.columns(3)
                 
                 with col_a:
-                    prijs = info.get('currentPrice', 'Onbekend')
+                    prijs = info.get('Price', 'Onbekend')
                     st.metric("Huidige Prijs", f"${prijs}" if prijs != 'Onbekend' else prijs)
                     
                 with col_b:
-                    # Winst per aandeel: is het positief (winst) of negatief (verlies)?
-                    winst = info.get('trailingEps', 'Onbekend')
+                    # Winst per aandeel (positief is winst, negatief is verlies)
+                    winst = info.get('EPS (ttm)', 'Onbekend')
                     st.metric("Winst per aandeel", f"${winst}" if winst != 'Onbekend' else winst)
                     
                 with col_c:
-                    # Wat zeggen de professionele investeerders?
-                    advies = info.get('recommendationKey', 'Onbekend').replace('_', ' ').upper()
-                    st.metric("Advies van experts", advies)
+                    # Advies op een schaal van 1 (kopen) tot 5 (verkopen)
+                    advies = info.get('Recom', 'Onbekend')
+                    st.metric("Advies van analisten (1=Kopen, 5=Verkopen)", advies)
+                    
             except Exception as e:
-                st.error("Kon de bedrijfscijfers niet goed inladen.")
+                st.error("Kon de bedrijfscijfers niet ophalen. Controleer of de afkorting klopt.")
