@@ -74,7 +74,6 @@ with tab2:
     @st.cache_data
     def haal_insider_data_op():
         try:
-            # Haalt direct de 100 nieuwste transacties op
             url = "http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=730&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&vl=&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=100&page=1"
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
@@ -116,13 +115,37 @@ with tab2:
         st.warning("Geen data om te laten zien.")
 
 # ==========================================
-# TAB 3: Aandelen Analyse & Nieuws (10-Punten Score)
+# TAB 3: Aandelen Analyse & Nieuws
 # ==========================================
 with tab3:
     st.header("Aandelen Analyse & Nieuws")
-    st.write("Laat de zoekbalk leeg voor algemeen nieuws, of typ een afkorting (zoals SOFI) voor een compleet rapport.")
+    st.write("Laat de zoekbalk leeg voor algemeen nieuws, of typ een **bedrijfsnaam** of **afkorting** voor een compleet rapport.")
 
-    ingevulde_ticker = st.text_input("Typ een beursafkorting (bijv. SOFI of AAPL):", "").strip().upper()
+    # Het invulveld heet nu 'ingevoerde_tekst' omdat het geen afkorting hoeft te zijn
+    ingevoerde_tekst = st.text_input("Typ een bedrijfsnaam (bijv. Nike) of afkorting (bijv. AAPL):", "").strip()
+
+    # --- NIEUWE HULPFUNCTIE: Naam naar Afkorting omzetten ---
+    @st.cache_data
+    def zoek_ticker_en_naam(zoekterm):
+        if not zoekterm:
+            return "", ""
+        
+        # We gebruiken een openbare API om de naam op te zoeken
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={zoekterm}"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        try:
+            reactie = requests.get(url, headers=headers, timeout=5)
+            if reactie.status_code == 200:
+                data = reactie.json()
+                if 'quotes' in data and len(data['quotes']) > 0:
+                    beste_match = data['quotes'][0]
+                    ticker = beste_match.get('symbol', zoekterm.upper())
+                    naam = beste_match.get('longname', beste_match.get('shortname', zoekterm))
+                    return ticker, naam
+        except:
+            pass
+        # Als het opzoeken mislukt, gebruiken we gewoon wat je hebt ingetypt
+        return zoekterm.upper(), zoekterm.upper()
 
     def naar_getal(tekst):
         try:
@@ -130,9 +153,12 @@ with tab3:
         except:
             return None
 
-    if ingevulde_ticker != "":
+    if ingevoerde_tekst != "":
+        with st.spinner("Bedrijf opzoeken..."):
+            ingevulde_ticker, echte_naam = zoek_ticker_en_naam(ingevoerde_tekst)
+            
         st.divider()
-        st.subheader(f"Overzicht voor {ingevulde_ticker}")
+        st.subheader(f"Overzicht voor {echte_naam} ({ingevulde_ticker})")
 
         with st.spinner("Gegevens ophalen..."):
             try:
@@ -143,7 +169,6 @@ with tab3:
                 score = 0
                 punten_uitleg = []
 
-                # 1. Winst
                 eps = naar_getal(info.get('EPS (ttm)'))
                 if eps is not None and eps > 0:
                     score += 1
@@ -151,7 +176,6 @@ with tab3:
                 else:
                     punten_uitleg.append("❌ Maakt verlies (EPS is negatief)")
 
-                # 2. Schulden
                 debt = naar_getal(info.get('Debt/Eq'))
                 if debt is not None and debt <= 1.0:
                     score += 1
@@ -159,15 +183,13 @@ with tab3:
                 else:
                     punten_uitleg.append("❌ Hoge schulden ten opzichte van eigen vermogen")
 
-                # 3. Korte termijn rekeningen
                 curr_ratio = naar_getal(info.get('Current Ratio'))
                 if curr_ratio is not None and curr_ratio >= 1.0:
                     score += 1
                     punten_uitleg.append("✅ Kan rekeningen op korte termijn makkelijk betalen")
                 else:
-                    punten_uitleg.append("❌ Weinig geld direct beschikbaar voor de lopende rekeningen")
+                    punten_uitleg.append("❌ Weinig geld direct beschikbaar voor lopende rekeningen")
 
-                # 4. Winstmarge
                 margin = naar_getal(info.get('Profit Margin'))
                 if margin is not None and margin > 0:
                     score += 1
@@ -175,7 +197,6 @@ with tab3:
                 else:
                     punten_uitleg.append("❌ Negatieve winstmarge (er lekt geld weg)")
 
-                # 5. Directe geldreserves
                 quick = naar_getal(info.get('Quick Ratio'))
                 if quick is not None and quick >= 1.0:
                     score += 1
@@ -183,7 +204,6 @@ with tab3:
                 else:
                     punten_uitleg.append("❌ Beperkte directe spaarreserves")
 
-                # 6. Omzetgroei
                 sales_qq = naar_getal(info.get('Sales Q/Q'))
                 if sales_qq is not None and sales_qq > 0:
                     score += 1
@@ -191,7 +211,6 @@ with tab3:
                 else:
                     punten_uitleg.append("❌ Omzet krimpt of stagneert")
 
-                # 7. Winstgroei
                 eps_qq = naar_getal(info.get('EPS Q/Q'))
                 if eps_qq is not None and eps_qq > 0:
                     score += 1
@@ -199,7 +218,6 @@ with tab3:
                 else:
                     punten_uitleg.append("❌ Winst krimpt of stagneert")
 
-                # 8. Rendement op Eigen Vermogen (ROE)
                 roe = naar_getal(info.get('ROE'))
                 if roe is not None and roe > 10:
                     score += 1
@@ -207,7 +225,6 @@ with tab3:
                 else:
                     punten_uitleg.append("❌ Laag rendement op het geld van aandeelhouders (ROE < 10%)")
 
-                # 9. Waardering (P/E Ratio)
                 pe = naar_getal(info.get('P/E'))
                 if pe is not None and 0 < pe <= 30:
                     score += 1
@@ -215,7 +232,6 @@ with tab3:
                 else:
                     punten_uitleg.append("❌ Aandeel is erg duur (P/E > 30) of het bedrijf maakt verlies")
 
-                # 10. Operationele marge
                 oper_margin = naar_getal(info.get('Oper. Margin'))
                 if oper_margin is not None and oper_margin > 10:
                     score += 1
@@ -278,22 +294,31 @@ with tab3:
                     st.metric("Dividend per Jaar", info.get('Dividend %', 'N/A'))
 
             except Exception as e:
-                st.error("Kon de gegevens voor dit aandeel niet ophalen. Controleer of de afkorting klopt.")
+                # Als het ophalen mislukt (bijv. bij een Chinese beurs)
+                st.error("Kon de gegevens voor dit bedrijf niet inladen.")
+                st.warning(f"Tip: Je zocht naar **{echte_naam} ({ingevulde_ticker})**. Finviz ondersteunt voornamelijk Amerikaanse beurzen (zoals de NASDAQ en NYSE). Bedrijven uit andere werelddelen werken hier vaak niet.")
 
         st.divider()
 
     # --- NIEUWSSECTIE ---
-    titel_nieuws = ingevulde_ticker if ingevulde_ticker != "" else "de Algemene Beurs"
+    if ingevoerde_tekst == "":
+        titel_nieuws = "de Algemene Beurs"
+        zoek_ticker_nieuws = ""
+    else:
+        # Als er gezocht is, gebruiken we de gevonden ticker en naam
+        titel_nieuws = echte_naam
+        zoek_ticker_nieuws = ingevulde_ticker
+
     st.subheader(f"Laatste nieuws over {titel_nieuws}")
 
     with st.spinner("Nieuws inladen..."):
         try:
-            if ingevulde_ticker == "":
+            if zoek_ticker_nieuws == "":
                 fnews = News()
                 nieuws_data = fnews.get_news()
                 nieuws_df = nieuws_data['news']
             else:
-                stock = finvizfinance(ingevulde_ticker)
+                stock = finvizfinance(zoek_ticker_nieuws)
                 nieuws_df = stock.ticker_news()
 
             if not nieuws_df.empty:
@@ -305,4 +330,4 @@ with tab3:
             else:
                 st.write("Geen recent nieuws beschikbaar.")
         except Exception as e:
-            st.error(f"Fout bij ophalen van het nieuws: {e}")
+            st.write("Er kon helaas geen specifiek nieuws worden gevonden voor dit aandeel.")
