@@ -116,7 +116,7 @@ with tab2:
         st.warning("Geen data om te laten zien.")
 
 # ==========================================
-# TAB 3: Aandelen Analyse & Nieuws
+# TAB 3: Aandelen Analyse & Nieuws (10-Punten Score)
 # ==========================================
 with tab3:
     st.header("Aandelen Analyse & Nieuws")
@@ -139,7 +139,7 @@ with tab3:
                 stock = finvizfinance(ingevulde_ticker)
                 info = stock.ticker_fundament()
 
-                # --- BEREKENING GEZONDHEIDSSCORE (1 t/m 5) ---
+                # --- BEREKENING GEZONDHEIDSSCORE (1 t/m 10) ---
                 score = 0
                 punten_uitleg = []
 
@@ -155,7 +155,7 @@ with tab3:
                 debt = naar_getal(info.get('Debt/Eq'))
                 if debt is not None and debt <= 1.0:
                     score += 1
-                    punten_uitleg.append("✅ Gezonde schuldenlast")
+                    punten_uitleg.append("✅ Gezonde schuldenlast ten opzichte van eigen vermogen")
                 else:
                     punten_uitleg.append("❌ Hoge schulden ten opzichte van eigen vermogen")
 
@@ -163,34 +163,74 @@ with tab3:
                 curr_ratio = naar_getal(info.get('Current Ratio'))
                 if curr_ratio is not None and curr_ratio >= 1.0:
                     score += 1
-                    punten_uitleg.append("✅ Kan rekeningen op korte termijn betalen")
+                    punten_uitleg.append("✅ Kan rekeningen op korte termijn makkelijk betalen")
                 else:
-                    punten_uitleg.append("❌ Weinig geld direct beschikbaar voor rekeningen")
+                    punten_uitleg.append("❌ Weinig geld direct beschikbaar voor de lopende rekeningen")
 
                 # 4. Winstmarge
                 margin = naar_getal(info.get('Profit Margin'))
                 if margin is not None and margin > 0:
                     score += 1
-                    punten_uitleg.append("✅ Positieve winstmarge")
+                    punten_uitleg.append("✅ Onder aan de streep is de winstmarge positief")
                 else:
-                    punten_uitleg.append("❌ Negatieve winstmarge")
+                    punten_uitleg.append("❌ Negatieve winstmarge (er lekt geld weg)")
 
                 # 5. Directe geldreserves
                 quick = naar_getal(info.get('Quick Ratio'))
                 if quick is not None and quick >= 1.0:
                     score += 1
-                    punten_uitleg.append("✅ Goede directe geldreserves")
+                    punten_uitleg.append("✅ Goede directe geldreserves (zonder voorraden mee te tellen)")
                 else:
                     punten_uitleg.append("❌ Beperkte directe spaarreserves")
 
-                # --- BLOK 1: FINANCIËLE GEZONDHEID & SCORE ---
-                st.markdown("#### 1. Financiële Gezondheid")
-                if score >= 4:
-                    st.success(f"🟢 **Gezondheidsscore: {score} / 5 (Sterk & Gezond)**")
-                elif score >= 2:
-                    st.warning(f"🟡 **Gezondheidsscore: {score} / 5 (Gemiddeld, let op risico's)**")
+                # 6. Omzetgroei
+                sales_qq = naar_getal(info.get('Sales Q/Q'))
+                if sales_qq is not None and sales_qq > 0:
+                    score += 1
+                    punten_uitleg.append("✅ Omzet groeit vergeleken met vorig jaar")
                 else:
-                    st.error(f"🔴 **Gezondheidsscore: {score} / 5 (Kwetsbaar / Veel risico)**")
+                    punten_uitleg.append("❌ Omzet krimpt of stagneert")
+
+                # 7. Winstgroei
+                eps_qq = naar_getal(info.get('EPS Q/Q'))
+                if eps_qq is not None and eps_qq > 0:
+                    score += 1
+                    punten_uitleg.append("✅ Winst stijgt vergeleken met vorig jaar")
+                else:
+                    punten_uitleg.append("❌ Winst krimpt of stagneert")
+
+                # 8. Rendement op Eigen Vermogen (ROE)
+                roe = naar_getal(info.get('ROE'))
+                if roe is not None and roe > 10:
+                    score += 1
+                    punten_uitleg.append("✅ Sterk rendement op investeringen (ROE > 10%)")
+                else:
+                    punten_uitleg.append("❌ Laag rendement op het geld van aandeelhouders (ROE < 10%)")
+
+                # 9. Waardering (P/E Ratio)
+                pe = naar_getal(info.get('P/E'))
+                if pe is not None and 0 < pe <= 30:
+                    score += 1
+                    punten_uitleg.append("✅ Aandeel is redelijk geprijsd (P/E onder de 30)")
+                else:
+                    punten_uitleg.append("❌ Aandeel is erg duur (P/E > 30) of het bedrijf maakt verlies")
+
+                # 10. Operationele marge
+                oper_margin = naar_getal(info.get('Oper. Margin'))
+                if oper_margin is not None and oper_margin > 10:
+                    score += 1
+                    punten_uitleg.append("✅ Sterke operationele winstmarge (> 10%)")
+                else:
+                    punten_uitleg.append("❌ Lage operationele winstmarge (< 10%)")
+
+                # --- BLOK 1: FINANCIËLE GEZONDHEID & SCORE ---
+                st.markdown("#### 1. Gezondheid & Groei")
+                if score >= 8:
+                    st.success(f"🟢 **Rapportcijfer: {score} / 10 (Uitstekend & Gezond)**")
+                elif score >= 5:
+                    st.warning(f"🟡 **Rapportcijfer: {score} / 10 (Gemiddeld, bekijk de minpunten)**")
+                else:
+                    st.error(f"🔴 **Rapportcijfer: {score} / 10 (Kwetsbaar / Veel risico)**")
 
                 c1, c2, c3 = st.columns(3)
                 with c1:
@@ -200,7 +240,7 @@ with tab3:
                 with c3:
                     st.metric("Winstmarge", info.get('Profit Margin', 'N/A'))
 
-                with st.expander("Bekijk toelichting op de score"):
+                with st.expander("Bekijk de volledige 10-punten check"):
                     for punt in punten_uitleg:
                         st.write(punt)
 
