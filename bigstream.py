@@ -7,12 +7,12 @@ from finvizfinance.news import News
 from finvizfinance.quote import finvizfinance
 
 # Zorgt ervoor dat de app over de hele breedte van je scherm staat
-st.set_page_config(page_title="Finviz Screener, Insiders & Nieuws", layout="wide")
+st.set_page_config(page_title="Beurs Dashboard", layout="wide")
 
-st.title("Finviz Stock Screener, Insider Trading & Nieuws")
+st.title("Beurs Dashboard: Screener, Insiders & Analyse")
 
-# Maak drie tabbladen aan voor een overzichtelijk dashboard
-tab1, tab2, tab3 = st.tabs(["Algemene Screener", "Recente Insider Trading", "Nieuws & Cijfers"])
+# Drie overzichtelijke tabbladen
+tab1, tab2, tab3 = st.tabs(["Algemene Screener", "Recente Insider Trading", "Aandelen Analyse & Nieuws"])
 
 # ==========================================
 # TAB 1: Algemene Aandelen Screener
@@ -39,7 +39,6 @@ with tab1:
             df = foverview.screener_view()
 
             if not df.empty:
-                # Voeg een klikbare link toe
                 df['Finviz Link'] = df['Ticker'].apply(
                     lambda x: f'https://finviz.com/quote.ashx?t={x}'
                 )
@@ -54,7 +53,6 @@ with tab1:
     if not df_screener.empty:
         st.success(f"{len(df_screener)} aandelen gevonden voor {exchange} - {sector}")
 
-        # Laat de tabel zien met een blauw kleurverloop voor de prijs
         st.dataframe(
             df_screener.style.background_gradient(cmap='Blues', subset=['Price'])
             .format({'Price': '${:.2f}', 'Dividend %': '{:.2f}%'}, na_rep="N/A"),
@@ -88,14 +86,11 @@ with tab2:
                 return pd.DataFrame()
 
             tabellen = pd.read_html(io.StringIO(reactie.text))
-
             gezochte_kolommen = ['Trade Date', 'Ticker', 'Company Name', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Qty', 'Value']
-
             grootste_tabel = pd.DataFrame()
 
             for tabel in tabellen:
                 tabel.columns = [str(kolom).replace('\xa0', ' ').strip() for kolom in tabel.columns]
-
                 if all(kolom in tabel.columns for kolom in gezochte_kolommen):
                     if len(tabel) > len(grootste_tabel):
                         grootste_tabel = tabel[gezochte_kolommen]
@@ -121,67 +116,153 @@ with tab2:
         st.warning("Geen data om te laten zien.")
 
 # ==========================================
-# TAB 3: Nieuws & Cijfers (Via Finviz)
+# TAB 3: Aandelen Analyse & Nieuws
 # ==========================================
 with tab3:
-    st.header("Het laatste nieuws en bedrijfsinfo")
-    st.write("Laat de zoekbalk leeg voor algemeen beursnieuws, of typ een afkorting (zoals SOFI) voor specifiek nieuws en cijfers.")
+    st.header("Aandelen Analyse & Nieuws")
+    st.write("Laat de zoekbalk leeg voor algemeen nieuws, of typ een afkorting (zoals SOFI) voor een compleet rapport.")
 
-    # Het invulveld
-    ingevulde_ticker = st.text_input("Typ een beursafkorting:", "").strip().upper()
-    titel_tekst = ingevulde_ticker if ingevulde_ticker != "" else "de Algemene Beurs"
+    ingevulde_ticker = st.text_input("Typ een beursafkorting (bijv. SOFI of AAPL):", "").strip().upper()
 
-    st.subheader(f"Laatste nieuws over {titel_tekst}")
-    
-    with st.spinner("Nieuws ophalen..."):
+    def naar_getal(tekst):
+        try:
+            return float(str(tekst).replace('%', '').replace(',', '').strip())
+        except:
+            return None
+
+    if ingevulde_ticker != "":
+        st.divider()
+        st.subheader(f"Overzicht voor {ingevulde_ticker}")
+
+        with st.spinner("Gegevens ophalen..."):
+            try:
+                stock = finvizfinance(ingevulde_ticker)
+                info = stock.ticker_fundament()
+
+                # --- BEREKENING GEZONDHEIDSSCORE (1 t/m 5) ---
+                score = 0
+                punten_uitleg = []
+
+                # 1. Winst
+                eps = naar_getal(info.get('EPS (ttm)'))
+                if eps is not None and eps > 0:
+                    score += 1
+                    punten_uitleg.append("✅ Maakt winst (EPS is positief)")
+                else:
+                    punten_uitleg.append("❌ Maakt verlies (EPS is negatief)")
+
+                # 2. Schulden
+                debt = naar_getal(info.get('Debt/Eq'))
+                if debt is not None and debt <= 1.0:
+                    score += 1
+                    punten_uitleg.append("✅ Gezonde schuldenlast")
+                else:
+                    punten_uitleg.append("❌ Hoge schulden ten opzichte van eigen vermogen")
+
+                # 3. Korte termijn rekeningen
+                curr_ratio = naar_getal(info.get('Current Ratio'))
+                if curr_ratio is not None and curr_ratio >= 1.0:
+                    score += 1
+                    punten_uitleg.append("✅ Kan rekeningen op korte termijn betalen")
+                else:
+                    punten_uitleg.append("❌ Weinig geld direct beschikbaar voor rekeningen")
+
+                # 4. Winstmarge
+                margin = naar_getal(info.get('Profit Margin'))
+                if margin is not None and margin > 0:
+                    score += 1
+                    punten_uitleg.append("✅ Positieve winstmarge")
+                else:
+                    punten_uitleg.append("❌ Negatieve winstmarge")
+
+                # 5. Directe geldreserves
+                quick = naar_getal(info.get('Quick Ratio'))
+                if quick is not None and quick >= 1.0:
+                    score += 1
+                    punten_uitleg.append("✅ Goede directe geldreserves")
+                else:
+                    punten_uitleg.append("❌ Beperkte directe spaarreserves")
+
+                # --- BLOK 1: FINANCIËLE GEZONDHEID & SCORE ---
+                st.markdown("#### 1. Financiële Gezondheid")
+                if score >= 4:
+                    st.success(f"🟢 **Gezondheidsscore: {score} / 5 (Sterk & Gezond)**")
+                elif score >= 2:
+                    st.warning(f"🟡 **Gezondheidsscore: {score} / 5 (Gemiddeld, let op risico's)**")
+                else:
+                    st.error(f"🔴 **Gezondheidsscore: {score} / 5 (Kwetsbaar / Veel risico)**")
+
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.metric("Winst per aandeel (EPS)", f"${info.get('EPS (ttm)', 'N/A')}")
+                with c2:
+                    st.metric("Schulden (Debt/Eq)", info.get('Debt/Eq', 'N/A'))
+                with c3:
+                    st.metric("Winstmarge", info.get('Profit Margin', 'N/A'))
+
+                with st.expander("Bekijk toelichting op de score"):
+                    for punt in punten_uitleg:
+                        st.write(punt)
+
+                # --- BLOK 2: KOERS & VERWACHTINGEN ---
+                st.markdown("#### 2. Koers & Verwachtingen")
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Huidige Koers", f"${info.get('Price', 'N/A')}")
+                with col2:
+                    st.metric("Doelkoers Experts", f"${info.get('Target Price', 'N/A')}")
+                with col3:
+                    st.metric("Hoogste / Laagste (Jaar)", info.get('52W Range', 'N/A'))
+                with col4:
+                    st.metric("Advies (1=Koop, 5=Verkoop)", info.get('Recom', 'N/A'))
+
+                # --- BLOK 3: VOLUME & HANDELSACTIVITEIT ---
+                st.markdown("#### 3. Handelsactiviteit & Volume")
+                col5, col6, col7 = st.columns(3)
+                with col5:
+                    st.metric("Dagvolume", info.get('Volume', 'N/A'))
+                with col6:
+                    st.metric("Gemiddeld Volume (3m)", info.get('Avg Volume', 'N/A'))
+                with col7:
+                    st.metric("Relatief Volume", info.get('Rel Volume', 'N/A'),
+                              help="Boven de 1.0 betekent actiever dan normaal.")
+
+                # --- BLOK 4: VERTROUWEN & DIVIDEND ---
+                st.markdown("#### 4. Vertrouwen & Beloning")
+                col8, col9, col10 = st.columns(3)
+                with col8:
+                    st.metric("Grote Fondsen (Inst Own)", info.get('Inst Own', 'N/A'))
+                with col9:
+                    st.metric("Gokt op daling (Short)", info.get('Short Float', 'N/A'))
+                with col10:
+                    st.metric("Dividend per Jaar", info.get('Dividend %', 'N/A'))
+
+            except Exception as e:
+                st.error("Kon de gegevens voor dit aandeel niet ophalen. Controleer of de afkorting klopt.")
+
+        st.divider()
+
+    # --- NIEUWSSECTIE ---
+    titel_nieuws = ingevulde_ticker if ingevulde_ticker != "" else "de Algemene Beurs"
+    st.subheader(f"Laatste nieuws over {titel_nieuws}")
+
+    with st.spinner("Nieuws inladen..."):
         try:
             if ingevulde_ticker == "":
-                # Algemeen marktnieuws ophalen
                 fnews = News()
                 nieuws_data = fnews.get_news()
                 nieuws_df = nieuws_data['news']
             else:
-                # Nieuws specifiek voor het gekozen aandeel
                 stock = finvizfinance(ingevulde_ticker)
                 nieuws_df = stock.ticker_news()
 
-            # We laten de 5 nieuwste artikelen zien
             if not nieuws_df.empty:
-                for index, row in nieuws_df.head(5).iterrows():
+                for _, row in nieuws_df.head(5).iterrows():
                     titel = row.get('Title', row.get('title', 'Geen titel'))
                     link = row.get('Link', row.get('link', '#'))
                     st.markdown(f"**[{titel}]({link})**")
                     st.write("---")
             else:
-                st.write("Er is op dit moment geen nieuws gevonden.")
-                
+                st.write("Geen recent nieuws beschikbaar.")
         except Exception as e:
-            st.error(f"Het ophalen van het nieuws is niet gelukt. Foutmelding: {e}")
-
-    # Cijfers tonen we alleen als je daadwerkelijk een bedrijf hebt ingetypt
-    if ingevulde_ticker != "":
-        st.subheader(f"Hoe staat {ingevulde_ticker} ervoor?")
-        
-        with st.spinner("Cijfers ophalen..."):
-            try:
-                stock = finvizfinance(ingevulde_ticker)
-                info = stock.ticker_fundament()
-                
-                col_a, col_b, col_c = st.columns(3)
-                
-                with col_a:
-                    prijs = info.get('Price', 'Onbekend')
-                    st.metric("Huidige Prijs", f"${prijs}" if prijs != 'Onbekend' else prijs)
-                    
-                with col_b:
-                    # Winst per aandeel (positief is winst, negatief is verlies)
-                    winst = info.get('EPS (ttm)', 'Onbekend')
-                    st.metric("Winst per aandeel", f"${winst}" if winst != 'Onbekend' else winst)
-                    
-                with col_c:
-                    # Advies op een schaal van 1 (kopen) tot 5 (verkopen)
-                    advies = info.get('Recom', 'Onbekend')
-                    st.metric("Advies van analisten (1=Kopen, 5=Verkopen)", advies)
-                    
-            except Exception as e:
-                st.error("Kon de bedrijfscijfers niet ophalen. Controleer of de afkorting klopt.")
+            st.error(f"Fout bij ophalen van het nieuws: {e}")
