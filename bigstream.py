@@ -331,3 +331,4 @@ with tab3:
                 st.write("Geen recent nieuws beschikbaar.")
         except Exception as e:
             st.write("Er kon helaas geen specifiek nieuws worden gevonden voor dit aandeel.")
+            
